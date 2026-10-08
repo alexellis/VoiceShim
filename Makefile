@@ -23,14 +23,13 @@ bundle: build
 		Info.plist.in > $(DIST)/Contents/Info.plist
 	codesign --force --sign "$(SIGN_ID)" $(DIST)
 
-# Release assets in bin/, as arkade publishes them: the app as a tarball
-# (tar keeps the bundle's layout and modes) and the bare binary, each with
-# a .sha256.
-release: bundle
+# Release assets in bin/, as arkade publishes them: the bare binary and
+# its .sha256. speechd needs nothing else; the app bundle only matters for
+# the menu-bar app's microphone prompt, and `make bundle` builds it.
+release: build
 	rm -rf bin && mkdir -p bin
-	tar -C dist -czf bin/$(APP)-darwin-arm64.tar.gz $(APP).app
 	cp .build/release/$(BIN) bin/$(BIN)-darwin-arm64
-	cd bin && for f in *; do shasum -a 256 "$$f" > "$$f.sha256"; done
+	cd bin && shasum -a 256 $(BIN)-darwin-arm64 > $(BIN)-darwin-arm64.sha256
 
 run: bundle
 	open $(DIST)

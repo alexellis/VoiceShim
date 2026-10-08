@@ -20,7 +20,7 @@ jobs:
           path: .build
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
       - name: Build
-        run: make release
+        run: make bundle release
       - name: Upload build
         uses: actions/upload-artifact@v4
         with:

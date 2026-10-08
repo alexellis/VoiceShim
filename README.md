@@ -28,11 +28,16 @@ to `~/Library/Application Support/FluidAudio` on first start.
 superterm speechd init
 ```
 
-On a Mac this downloads the latest VoiceShim release, checks its sha256,
-installs `~/Applications/VoiceShim.app`, starts it at login as a
-LaunchAgent with a bearer token, waits while the models download, and adds
-the `speech:` block to `~/.superterm/config.yaml`. Restart superterm and
-you're done.
+On a Mac this downloads the latest `voice-shim` binary, checks its sha256,
+puts it in `~/.superterm/bin`, starts it at login as a LaunchAgent with a
+bearer token, waits while the models download, and adds
+the `speech:` block to `~/.superterm/config.yaml`, then restarts
+superterm's service so it takes effect. Run superterm as a service that
+reads that file:
+
+```sh
+superterm service install --config ~/.superterm/config.yaml
+```
 
 ## Build
 
@@ -54,15 +59,15 @@ make bundle SIGN_ID="Apple Development: you@example.com (TEAMID)"
 ## Run it yourself
 
 ```sh
-~/Applications/VoiceShim.app/Contents/MacOS/VoiceShim --install    # LaunchAgent + token
-~/Applications/VoiceShim.app/Contents/MacOS/VoiceShim --uninstall  # remove the agent
+voice-shim --install    # LaunchAgent + token
+voice-shim --uninstall  # remove the agent
 ```
 
 Or in the foreground, with `--voice` to pick another Kokoro voice and
 `--no-tts` to listen only:
 
 ```sh
-VoiceShim --speechd --listen 127.0.0.1:8765 --token-file ~/.superterm/speechd-token
+voice-shim --speechd --listen 127.0.0.1:8765 --token-file ~/.superterm/speechd-token
 ```
 
 superterm reaches it with:
@@ -77,8 +82,9 @@ speech:
 ## Releases
 
 `arkade rel` cuts a release. The tag builds on GitHub's macOS runners and
-uploads `VoiceShim-darwin-arm64.tar.gz` and the bare `voice-shim-darwin-arm64`
-binary, each with a `.sha256`.
+uploads the `voice-shim-darwin-arm64` binary and its `.sha256`. The
+menu-bar app is a bundle (`make bundle`) because macOS asks for the
+microphone through its Info.plist; speechd doesn't need it.
 
 ## Configure the menu-bar app
 
