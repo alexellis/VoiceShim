@@ -64,8 +64,14 @@ func loadWav16kMono(path: String) throws -> [Float] {
 }
 
 // Daemon mode: `voice-shim --speechd [--listen 127.0.0.1:8765]
-// [--token TOKEN | --token-file PATH]` — serve the Linux speechd REST
-// contract backed by Parakeet on the ANE. No microphone, no TCC.
+// [--token TOKEN | --token-file PATH] [--voice af_heart | --no-tts]` — serve
+// the Linux speechd REST contract: Parakeet on the ANE listens, Kokoro on
+// the ANE speaks. No microphone, no TCC.
+// Setup: `voice-shim --install` makes this Mac's speechd start at login, as
+// `superterm speechd init` does; `--uninstall` undoes it.
+if CommandLine.arguments.contains("--install") { exit(Install.install()) }
+if CommandLine.arguments.contains("--uninstall") { exit(Install.uninstall()) }
+
 if CommandLine.arguments.contains("--speechd") {
     func flagValue(_ name: String) -> String? {
         guard let idx = CommandLine.arguments.firstIndex(of: name),
@@ -89,6 +95,8 @@ if CommandLine.arguments.contains("--speechd") {
     }
     let sem = DispatchSemaphore(value: 0)
     let resolvedToken = token
+    let speaker = CommandLine.arguments.contains("--no-tts")
+        ? nil : Speaker(voice: flagValue("--voice") ?? "af_heart")
     Task.detached {
         do {
             let transcriber = Transcriber()
@@ -97,12 +105,19 @@ if CommandLine.arguments.contains("--speechd") {
                 logLine(String(format: "speechd: model download %.0f%%", fraction * 100))
             }
             logLine("speechd: models ready")
-            let server = SpeechServer(transcriber: transcriber, config: Config.load(),
+            if let speaker {
+                // Before listening, so the first spoken reply is not stuck
+                // behind a model download.
+                logLine("speechd: loading the Kokoro voice \(speaker.voice)...")
+                try await speaker.load()
+                logLine("speechd: voice ready")
+            }
+            let server = SpeechServer(transcriber: transcriber, speaker: speaker, config: Config.load(),
                                       token: resolvedToken, host: host, port: port)
             SpeechServer.retained = server
             try server.start()
             logLine("speechd listening on http://\(host):\(port) (auth \(resolvedToken == nil ? "disabled" : "enabled"))")
-            logLine("speechd backend: parakeet-tdt-0.6b-v3-coreml (ane)")
+            logLine("speechd backend: parakeet-tdt-0.6b-v3-coreml (ane)" + (speaker == nil ? ", no tts" : ", kokoro (ane) tts"))
         } catch {
             logLine("speechd: \(error.localizedDescription)")
             exit(1)

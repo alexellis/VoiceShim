@@ -1,26 +1,38 @@
 # VoiceShim
 
-Local voice for [superterm](https://superterm.dev) on a Mac: dictation in,
-and (next) replies spoken back. Everything runs on your Mac.
+Local voice for [superterm](https://superterm.dev) on a Mac: dictation in, and
+replies spoken back. Everything runs on your Mac.
 
 * **On-device speech-to-text.** NVIDIA Parakeet TDT 0.6B v3 runs on the
   Apple Neural Engine via [FluidAudio](https://github.com/FluidInference/FluidAudio).
   Audio never leaves your Mac.
+* **Text to speech on-device.** Kokoro (af_heart) also runs on the Neural
+  Engine and speaks superterm's chat replies and screen readbacks: about
+  0.15 to 0.3s a sentence once warm, on an M2.
 * **A speechd for macOS.** `voice-shim --speechd` serves the same REST API as
-  superterm's Linux speech daemon, so superterm on a Mac dictates through it
-  unchanged: `/health`, `/v1/transcribe`, and `/v1/preview`, with bearer
-  auth.
+  superterm's Linux speech daemon, so superterm on a Mac uses it unchanged:
+  `/health`, `/v1/transcribe`, `/v1/preview`, and `/tts`, with bearer auth.
 * **A menu-bar dictation app.** Click the icon or hold Option+Space, speak,
   and watch live previews in a floating panel. The text goes into the
   superterm session you're looking at, or the frontmost app if you prefer.
 * **Optional polish.** It can route the transcript through any
   OpenAI-compatible endpoint for punctuation and cleanup. It fails open: if
   the endpoint is down, you get the raw transcript.
-* **Speaking back (planned).** Read replies aloud through a local TTS server
-  such as Kokoro or Chatterbox.
 
-Needs Apple Silicon and macOS 14 or later. The ASR model (~500MB) downloads
-to `~/Library/Application Support/FluidAudio` on first use.
+Needs Apple Silicon and macOS 14 or later. The models (about 1GB) download
+to `~/Library/Application Support/FluidAudio` on first start.
+
+## Set up with superterm (one command)
+
+```sh
+superterm speechd init
+```
+
+On a Mac this downloads the latest VoiceShim release, checks its sha256,
+installs `~/Applications/VoiceShim.app`, starts it at login as a
+LaunchAgent with a bearer token, waits while the models download, and adds
+the `speech:` block to `~/.superterm/config.yaml`. Restart superterm and
+you're done.
 
 ## Build
 
@@ -39,20 +51,34 @@ grant each time. Sign with your own identity to keep it:
 make bundle SIGN_ID="Apple Development: you@example.com (TEAMID)"
 ```
 
-## Run as superterm's speech daemon
+## Run it yourself
 
 ```sh
-dist/VoiceShim.app/Contents/MacOS/VoiceShim --speechd \
-  --listen 127.0.0.1:8765 --token-file ~/.superterm/speechd-token
+~/Applications/VoiceShim.app/Contents/MacOS/VoiceShim --install    # LaunchAgent + token
+~/Applications/VoiceShim.app/Contents/MacOS/VoiceShim --uninstall  # remove the agent
 ```
 
-Then point superterm at it in `~/.superterm/config.yaml`:
+Or in the foreground, with `--voice` to pick another Kokoro voice and
+`--no-tts` to listen only:
+
+```sh
+VoiceShim --speechd --listen 127.0.0.1:8765 --token-file ~/.superterm/speechd-token
+```
+
+superterm reaches it with:
 
 ```yaml
 speech:
   endpoint: http://127.0.0.1:8765
+  readback_endpoint: http://127.0.0.1:8765
   token_file: ~/.superterm/speechd-token
 ```
+
+## Releases
+
+`arkade rel` cuts a release. The tag builds on GitHub's macOS runners and
+uploads `VoiceShim-darwin-arm64.tar.gz` and the bare `voice-shim-darwin-arm64`
+binary, each with a `.sha256`.
 
 ## Configure the menu-bar app
 

@@ -20,13 +20,9 @@ jobs:
           path: .build
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
       - name: Build
-        run: make bundle
-      - name: Package
-        # ditto keeps the bundle's symlinks and permissions, which a plain
-        # artifact upload of the .app directory would lose.
-        run: ditto -c -k --keepParent dist/VoiceShim.app VoiceShim.zip
-      - name: Upload app
+        run: make release
+      - name: Upload build
         uses: actions/upload-artifact@v4
         with:
           name: VoiceShim
-          path: VoiceShim.zip
+          path: bin/

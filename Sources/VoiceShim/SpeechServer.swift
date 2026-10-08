@@ -9,30 +9,34 @@ import Network
 ///   GET  /health         -> {ok, version, configured, backend, authEnabled, ttsEnabled}
 ///   POST /v1/transcribe  -> multipart field "audio" -> {text, rawText, polished}  (polish on)
 ///   POST /v1/preview     -> same, polish off
-///   POST /tts            -> 404 until TTS is wired
+///   POST /tts            -> JSON {text, speed?} -> audio/wav (Kokoro on the ANE)
 ///
 /// Point a superterm server at it with:
 ///   speech:
 ///     endpoint: http://127.0.0.1:8765
+///     readback_endpoint: http://127.0.0.1:8765
 final class SpeechServer: @unchecked Sendable {
     /// Keeps the daemon alive for the process lifetime — the listener's
     /// callbacks only hold the server weakly.
     nonisolated(unsafe) static var retained: SpeechServer?
 
     let transcriber: Transcriber
+    let speaker: Speaker?
     let config: Config
     let token: String?
     let host: String
     let port: UInt16
     static let maxBodyBytes = 26 << 20
+    static let maxTTSBodyBytes = 64 << 10
 
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "speechd")
     fileprivate var activeConnections = 0
     static let maxConnections = 32
 
-    init(transcriber: Transcriber, config: Config, token: String?, host: String, port: UInt16) {
+    init(transcriber: Transcriber, speaker: Speaker?, config: Config, token: String?, host: String, port: UInt16) {
         self.transcriber = transcriber
+        self.speaker = speaker
         self.config = config
         self.token = token
         self.host = host
@@ -70,11 +74,11 @@ final class SpeechServer: @unchecked Sendable {
             guard method == "GET" else { return textError(405, "method not allowed") }
             let health: [String: Any] = [
                 "ok": true,
-                "version": "voice-shim/0.1.0",
+                "version": "voice-shim/\(voiceShimVersion)",
                 "configured": true,
                 "backend": "parakeet-tdt-0.6b-v3-coreml (ane)",
                 "authEnabled": token != nil,
-                "ttsEnabled": false,
+                "ttsEnabled": speaker != nil,
             ]
             let json = (try? JSONSerialization.data(withJSONObject: health)) ?? Data()
             respond(200, "application/json", json + Data("\n".utf8))
@@ -99,7 +103,25 @@ final class SpeechServer: @unchecked Sendable {
         case "/tts":
             guard method == "POST" else { return textError(405, "method not allowed") }
             guard authorized(headers) else { return textError(401, "unauthorized") }
-            textError(404, "text-to-speech is not configured")
+            guard let speaker else { return textError(404, "text-to-speech is not configured") }
+            guard body.count <= Self.maxTTSBodyBytes else { return textError(413, "request too large") }
+            guard let input = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+                return textError(400, "invalid JSON body")
+            }
+            let text = (input["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return textError(400, "text is required") }
+            guard text.count <= Speaker.maxCharacters else { return textError(413, "text is too long") }
+            // superterm sends its readback speed; 0 or none is normal pace.
+            var speed = Float((input["speed"] as? NSNumber)?.doubleValue ?? 1)
+            if speed <= 0 { speed = 1 }
+            speed = min(max(speed, 0.5), 2)
+            Task {
+                do {
+                    respond(200, "audio/wav", try await speaker.wav(text, speed: speed))
+                } catch {
+                    textError(502, "synthesise: \(error.localizedDescription)")
+                }
+            }
         default:
             textError(404, "not found")
         }

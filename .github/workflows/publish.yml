@@ -1,0 +1,25 @@
+name: publish
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Build release assets
+        run: make release VERSION=${{ github.ref_name }}
+      - name: Upload release assets
+        uses: alexellis/upload-assets@0.5.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          asset_paths: '["./bin/*"]'
